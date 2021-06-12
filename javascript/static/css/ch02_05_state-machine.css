@@ -1,0 +1,11 @@
+#box-table {
+    position: absolute;
+    display: inline-block;
+    bottom: 5px;
+    right: 5px;
+    color: white;
+    border: 1px solid white;
+    border-radius: 5px;
+    padding: 10px;
+    font-family: 'Courier New', Courier, monospace;
+}

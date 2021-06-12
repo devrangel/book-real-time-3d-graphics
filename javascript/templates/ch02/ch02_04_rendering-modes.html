@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time 3D Graphics with WebGL2</title>
+    <link rel="shortcut icon" href="static/img/favicon.ico" type="image/x-icon">
+
+    <!-- libraries -->
+    <link rel="stylesheet" href="static/css/normalize.css">
+    <link rel="stylesheet" href="static/css/ch02_04_rendering-modes.css">
+
+    <!-- modules -->
+    <script src="static/js/utils.js"></script>
+
+    <!-- Vertex Shader -->
+    <script id="vertex-shader" type="x-shader/x-vertex">
+        #version 300 es
+        precision mediump float;
+
+        // Supplied vertex position attribute
+        in vec3 aVertexPosition;
+
+        void main() {
+            // Set the position in clipspace coordinates
+            gl_PointSize = 40.0;
+            gl_Position = vec4(aVertexPosition, 1.0);
+        }
+    </script>
+
+    <!-- Fragment Shader -->
+    <script id="fragment-shader" type="x-shader/x-fragment">
+        #version 300 es
+        precision mediump float;
+
+        // Color that is the result of this shader
+        out vec4 fragColor;
+
+        void main() {
+            // Set the result as red
+            fragColor = vec4(0.8, 0.5, 0.0, 1.0);
+        }
+    </script>
+
+    <script type="text/javascript">
+        'use strict';
+
+        let gl, program, trapezoidVAO, trapezoidIndexBuffer, indices;
+
+        // Global variable that captures the current rendering mode type
+        let renderingMode = 'TRIANGLES';
+
+        // Given an id, extract the content's of a shader script
+        //  from the DOM and return the compiled shader
+        function getShader(id) {
+            const script = document.getElementById(id);
+            const shaderString = script.text.trim();
+
+            // Assign shader depending on the type of shader
+            let shader;
+            if(script.type === 'x-shader/x-vertex') {
+                shader = gl.createShader(gl.VERTEX_SHADER);
+            } else if(script.type === 'x-shader/x-fragment') {
+                shader = gl.createShader(gl.FRAGMENT_SHADER);
+            } else {
+                return null;
+            }
+
+            // Compile the shader using the supplied shader code
+            gl.shaderSource(shader, shaderString);
+            gl.compileShader(shader);
+
+            // Ensure the shader is valid
+            if(!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error(gl.getShaderInfoLog(shader));
+                return null;
+            }
+
+            return shader;
+        }
+
+        // Create a program with the appropriate vertex and fragment shaders
+        function initProgram() {
+            const vertexShader = getShader('vertex-shader');
+            const fragmentShader = getShader('fragment-shader');
+
+            // Create a program
+            program = gl.createProgram();
+
+            // Attach the shaders to this program
+            gl.attachShader(program, vertexShader);
+            gl.attachShader(program, fragmentShader);
+
+            // Link shaders
+            gl.linkProgram(program);
+
+            // Ensure the program is valid
+            if(!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                console.error("Could not initialize shaders");
+            }
+
+            // Use this program instance
+            gl.useProgram(program);
+            // We attach the location of these shader values to the program
+            //  instance for easy access later in the code
+            program.aVertexPosition = gl.getAttribLocation(program, 'aVertexPosition');
+        }
+
+        // Set up the buffers for the square
+        function initBuffer()
+        {
+            const vertices = [
+                -0.5, -0.5, 0,
+                -0.25, 0.5, 0,
+                0.0, -0.5, 0,
+                0.25, 0.5, 0,
+                0.5, -0.5, 0
+            ];
+
+            // Indices defined in counter-clockwise order
+            indices = [0, 1, 2, 0, 2, 3, 2, 3, 4];
+
+            // Create VAO instance
+            trapezoidVAO = gl.createVertexArray();
+
+            // Bind it so we can work on it
+            gl.bindVertexArray(trapezoidVAO);
+
+            // Setting up the VBO
+            const trapezoidVertexBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, trapezoidVertexBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+
+            // Provide instructions for VAO to use data later in draw
+            gl.enableVertexAttribArray(program.aVertexPosition);
+            gl.vertexAttribPointer(program.aVertexPosition, 3, gl.FLOAT, false, 0, 0);
+
+            // Setting up the IBO
+            trapezoidIndexBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, trapezoidIndexBuffer);
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+
+            // Clean
+            gl.bindVertexArray(null);
+            gl.bindBuffer(gl.ARRAY_BUFFER, null);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+        }
+
+        // We call draw to render to our canvas
+        function draw() {
+            // Clear the scene
+            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+            // Bind the VAO
+            gl.bindVertexArray(trapezoidVAO);
+
+            // Bind IBO
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, trapezoidIndexBuffer);
+
+            // Depending on the rendering mode type, we will draw differently
+            switch(renderingMode) {
+                case 'TRIANGLES': {
+                    indices = [0, 1, 2, 2, 3, 4];
+                    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+                    gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0);
+                    break;
+                }
+                case 'LINES': {
+                    indices = [1, 3, 0, 4, 1, 2, 2, 3];
+                    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+                    gl.drawElements(gl.LINES, indices.length, gl.UNSIGNED_SHORT, 0);
+                    break;
+                }
+                case 'POINTS': {
+                    indices = [1, 2, 3];
+                    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+                    gl.drawElements(gl.POINTS, indices.length, gl.UNSIGNED_SHORT, 0);
+                    break;
+                }
+                case 'LINE_LOOP': {
+                    indices = [2, 3, 4, 1, 0];
+                    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+                    gl.drawElements(gl.LINE_LOOP, indices.length, gl.UNSIGNED_SHORT, 0);
+                    break;
+                }
+                case 'LINE_STRIP': {
+                    indices = [2, 3, 4, 1, 0];
+                    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+                    gl.drawElements(gl.LINE_STRIP, indices.length, gl.UNSIGNED_SHORT, 0);
+                    break;
+                }
+                case 'TRIANGLE_STRIP': {
+                    indices = [0, 1, 2, 3, 4];
+                    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+                    gl.drawElements(gl.TRIANGLE_STRIP, indices.length, gl.UNSIGNED_SHORT, 0);
+                    break;
+                }
+                case 'TRIANGLE_FAN': {
+                    indices = [0, 1, 2, 3, 4];
+                    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+                    gl.drawElements(gl.TRIANGLE_FAN, indices.length, gl.UNSIGNED_SHORT, 0);
+                    break;
+                }
+            }
+
+            // Clean
+            gl.bindVertexArray(null);
+            gl.bindBuffer(gl.ARRAY_BUFFER, null);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+        }
+
+        function render() {
+            requestAnimationFrame(render);
+            draw();
+        }
+
+        // Program starts here
+        function init() {
+            // Retrieve the canvas
+            const canvas = utils.getCanvas('webgl-canvas');
+
+            // Set the canvas to the size of the screen
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            // Rretrieve a WebGL context
+            gl = utils.getGLContext(canvas);
+
+            // Set the clear color to be black
+            gl.clearColor(0, 0, 0, 1);
+
+            // Call the functions in a appropriate order
+            initProgram();
+            initBuffer();
+            render();
+        }
+
+        function changeRenderingMode(mode) {
+            renderingMode = mode;
+        }
+
+        // Call 'init' once the document has loaded
+        window.onload = init;
+    </script>
+</head>
+<body>
+    <div>
+        <div class="dropdown">
+            <button class="dropbtn">Rendering Mode</button>
+            <div class="dropdown-content">
+                <button id="triangles" onclick="changeRenderingMode('TRIANGLES')">TRIANGLES</button>
+                <button id="lines" onclick="changeRenderingMode('LINES')" >LINES</button>
+                <button id="points" onclick="changeRenderingMode('POINTS')">POINTS</button>
+                <button id="line_loop" onclick="changeRenderingMode('LINE_LOOP')">LINE LOOP</button>
+                <button id="line_strip" onclick="changeRenderingMode('LINE_STRIP')">LINE STRIP</button>
+                <button id="triangle_strip" onclick="changeRenderingMode('TRIANGLE_STRIP')">TRIANGLE STRIP</button>
+                <button id="triangle_fan" onclick="changeRenderingMode('TRIANGLE_FAN')">TRIANGLE FAN</button>
+            </div>
+        </div>
+        <canvas id="webgl-canvas" width="800" height="600">
+            Your browser does not support HTML5 canvas element.
+        </canvas>
+    </div>
+</body>
+</html>

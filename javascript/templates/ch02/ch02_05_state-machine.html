@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time 3D Graphics with WebGL2</title>
+    <link rel="shortcut icon" href="static/img/favicon.ico" type="image/x-icon">
+
+    <!-- libraries -->
+    <link rel="stylesheet" href="static/css/normalize.css">
+    <link rel="stylesheet" href="static/css/ch02_05_state-machine.css">
+
+    <!-- modules -->
+    <script src="static/js/utils.js"></script>
+    <script src="static/js/glMatrix.js"></script>
+
+    <!-- Vertex Shader -->
+    <script id="vertex-shader" type="x-shader/x-vertex">
+        #version 300 es
+        precision mediump float;
+
+        // Supplied vertex position attribute
+        in vec3 aVertexPosition;
+
+        uniform mat4 uModelViewMatrix;
+        uniform mat4 uProjectionMatrix;
+
+        void main() {
+            // Set the position in clipspace coordinates
+            gl_Position = uProjectionMatrix * uModelViewMatrix * vec4(aVertexPosition, 1.0);
+        }
+    </script>
+
+    <!-- Fragment Shader -->
+    <script id="fragment-shader" type="x-shader/x-fragment">
+        #version 300 es
+        precision mediump float;
+
+        // Color that is the result of this shader
+        out vec4 fragColor;
+
+        void main() {
+            // Set the result as red
+            fragColor = vec4(0.8, 0.5, 0.0, 1.0);
+        }
+    </script>
+
+    <script type="text/javascript">
+        'use strict';
+
+        let gl, program, coneVAO, coneIndexBuffer, indices;
+        let vboName, iboName;
+        let vboSize = 0,
+            vboUsage = 0,
+            iboSize = 0,
+            iboUsage = 0,
+            isVerticeVbo = false,
+            isConeVertexBuffer = false,
+            isIndicesVbo = false,
+            isConeIndexBuffer = false,
+            projectionMatrix = mat4.create(),
+            modelViewMatrix = mat4.create();
+
+        // Given an id, extract the content's of a shader script
+        //  from the DOM and return the compiled shader
+        function getShader(id) {
+            const script = document.getElementById(id);
+            const shaderString = script.text.trim();
+
+            // Assign shader depending on the type of shader
+            let shader;
+            if(script.type === 'x-shader/x-vertex') {
+                shader = gl.createShader(gl.VERTEX_SHADER);
+            } else if(script.type === 'x-shader/x-fragment') {
+                shader = gl.createShader(gl.FRAGMENT_SHADER);
+            } else {
+                return null;
+            }
+
+            // Compile the shader using the supplied shader code
+            gl.shaderSource(shader, shaderString);
+            gl.compileShader(shader);
+
+            // Ensure the shader is valid
+            if(!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error(gl.getShaderInfoLog(shader));
+                return null;
+            }
+
+            return shader;
+        }
+
+        // Create a program with the appropriate vertex and fragment shaders
+        function initProgram() {
+            const vertexShader = getShader('vertex-shader');
+            const fragmentShader = getShader('fragment-shader');
+
+            // Create a program
+            program = gl.createProgram();
+
+            // Attach the shaders to this program
+            gl.attachShader(program, vertexShader);
+            gl.attachShader(program, fragmentShader);
+
+            // Link shaders
+            gl.linkProgram(program);
+
+            // Ensure the program is valid
+            if(!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                console.error("Could not initialize shaders");
+            }
+
+            // Use this program instance
+            gl.useProgram(program);
+            // We attach the location of these shader values to the program
+            //  instance for easy access later in the code
+            program.aVertexPosition = gl.getAttribLocation(program, 'aVertexPosition');
+            program.uProjectionMatrix = gl.getUniformLocation(program, 'uProjectionMatrix');
+            program.uModelViewMatrix = gl.getUniformLocation(program, 'uModelViewMatrix');
+        }
+
+        // Set up the buffers for the square
+        function initBuffer()
+        {
+            const vertices = [
+                1.5, 0, 0,
+                -1.5, 1, 0,
+                -1.5, 0.809017, 0.587785,
+                -1.5, 0.309017, 0.951057,
+                -1.5, -0.309017, 0.951057,
+                -1.5, -0.809017, 0.587785,
+                -1.5, -1, 0,
+                -1.5, -0.809017, -0.587785,
+                -1.5, -0.309017, -0.951057,
+                -1.5, 0.309017, -0.951057,
+                -1.5, 0.809017, -0.587785
+            ];
+
+            // Indices defined in counter-clockwise order
+            indices = [
+                0, 1, 2,
+                0, 2, 3,
+                0, 3, 4,
+                0, 4, 5,
+                0, 5, 6,
+                0, 6, 7,
+                0, 7, 8,
+                0, 8, 9,
+                0, 9, 10,
+                0, 10, 1
+            ];
+
+            // Create VAO instance
+            coneVAO = gl.createVertexArray();
+
+            // Bind it so we can work on it
+            gl.bindVertexArray(coneVAO);
+
+            // Setting up the VBO
+            const coneVertexBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, coneVertexBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+
+            // Provide instructions for VAO to use data later in draw
+            gl.vertexAttribPointer(program.aVertexPosition, 3, gl.FLOAT, false, 0, 0);
+            gl.enableVertexAttribArray(program.aVertexPosition);
+
+            // Setting up the IBO
+            coneIndexBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, coneIndexBuffer);
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+
+            // Set the global variables based on the parameter type
+            if(coneVertexBuffer === gl.getParameter(gl.ARRAY_BUFFER_BINDING)) {
+                vboName = 'coneVertexBuffer';
+            }
+            if(coneIndexBuffer === gl.getParameter(gl.ELEMENT_ARRAY_BUFFER_BINDING)) {
+                iboName = 'coneIndexBuffer';
+            }
+
+            vboSize = gl.getBufferParameter(gl.ARRAY_BUFFER, gl.BUFFER_SIZE);
+            vboUsage = gl.getBufferParameter(gl.ARRAY_BUFFER, gl.BUFFER_USAGE);
+
+            iboSize = gl.getBufferParameter(gl.ELEMENT_ARRAY_BUFFER, gl.BUFFER_SIZE);
+            iboUsage = gl.getBufferParameter(gl.ELEMENT_ARRAY_BUFFER, gl.BUFFER_USAGE);
+            
+            try {
+                isVerticeVbo = gl.isBuffer(vertices);
+            }
+            catch(e) {
+                isVerticeVbo = false;
+            }
+            isConeVertexBuffer = gl.isBuffer(coneVertexBuffer);
+
+            try {
+                isIndicesVbo = gl.isBuffer(indices);
+            }
+            catch(e) {
+                isIndicesVbo = false;
+            }
+            isConeIndexBuffer = gl.isBuffer(coneIndexBuffer);
+
+            // Apply transformations
+            projectionMatrix = mat4.perspective(projectionMatrix, 45.0, gl.canvas.width / gl.canvas.height, 0.1, 10000);
+            modelViewMatrix = mat4.translate(modelViewMatrix, [0.0, 0.0, -5.0]);
+
+            // Set uniforms
+            gl.uniformMatrix4fv(program.uProjectionMatrix, true, new Float32Array(projectionMatrix));
+            gl.uniformMatrix4fv(program.uModelViewMatrix, true, new Float32Array(modelViewMatrix));
+
+            // Clean
+            gl.bindVertexArray(null);
+            gl.bindBuffer(gl.ARRAY_BUFFER, null);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+        }
+
+        // We call draw to render to our canvas
+        function draw() {
+            // Clear the scene
+            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+            // Bind the VAO
+            gl.bindVertexArray(coneVAO);
+
+            // Bind IBO
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, coneIndexBuffer);
+
+            gl.drawElements(gl.LINE_LOOP, indices.length, gl.UNSIGNED_SHORT, 0);
+
+            // Clean
+            gl.bindVertexArray(null);
+            gl.bindBuffer(gl.ARRAY_BUFFER, null);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+        }
+
+        function render() {
+            requestAnimationFrame(render);
+            draw();
+        }
+
+        // Program starts here
+        function init() {
+            // Retrieve the canvas
+            const canvas = utils.getCanvas('webgl-canvas');
+
+            // Set the canvas to the size of the screen
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            // Rretrieve a WebGL context
+            gl = utils.getGLContext(canvas);
+            // Set the clear color to be black
+            gl.clearColor(0, 0, 0, 1);
+
+            gl.enable(gl.DEPTH_TEST);
+
+            // Call the functions in a appropriate order
+            initProgram();
+            initBuffer();
+            render();
+
+            // Update table after we've rendered
+            updateBoxTableInfo();
+        }
+
+        // Helper function that updates the elements in the DOM
+        function updateBoxTableInfo() {
+            document.getElementById("t-vbo-name").innerText = vboName;
+            document.getElementById("t-vbo-size").innerText = vboSize;
+            document.getElementById("t-vbo-usage").innerText = vboUsage;
+            document.getElementById("t-ibo-name").innerText = iboName;
+            document.getElementById("t-ibo-size").innerText = iboSize;
+            document.getElementById("t-ibo-usage").innerText = iboUsage;
+            document.getElementById("li-is-vertices-vbo").innerText = isVerticeVbo ? 'Yes' : 'No';
+            document.getElementById("li-is-cone-vertices-buffer-vbo").innerText = isConeVertexBuffer ? 'Yes' : 'No';
+            document.getElementById("li-is-indices-vbo").innerText = isIndicesVbo ? 'Yes' : 'No';
+            document.getElementById("li-is-cone-index-buffer-vbo").innerText = isConeIndexBuffer ? 'Yes' : 'No';
+        }
+
+        // Call 'init' once the document has loaded
+        window.onload = init;
+    </script>
+</head>
+<body>
+    <div>
+        <div id="box-table">
+            <table>
+                <tr>
+                    <th>Buffer</th>
+                    <th>Name</th>
+                    <th>Size</th>
+                    <th>Usage</th>
+                </tr>
+                <tr>
+                    <th>VBO:</th>
+                    <th id="t-vbo-name"></th>
+                    <th id="t-vbo-size"></th>
+                    <th id="t-vbo-usage"></th>
+                </tr>
+                <tr>
+                    <th>IBO:</th>
+                    <th id="t-ibo-name"></th>
+                    <th id="t-ibo-size"></th>
+                    <th id="t-ibo-usage"></th>
+                </tr>
+            </table>
+            <ul>
+                <li>Is vertices a VBO? <strong id="li-is-vertices-vbo"></strong></li>
+                <li>Is coneVertexBuffer a VBO? <strong id="li-is-cone-vertices-buffer-vbo"></strong></li>
+                <li>Is indices a VBO? <strong id="li-is-indices-vbo"></strong></li>
+                <li>Is coneIndexBuffer a VBO? <strong id="li-is-cone-index-buffer-vbo"></strong></li>
+            </ul>
+        </div>
+        <canvas id="webgl-canvas" width="800" height="600">
+            Your browser does not support HTML5 canvas element.
+        </canvas>
+    </div>
+</body>
+</html>

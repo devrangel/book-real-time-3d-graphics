@@ -26,7 +26,7 @@ const mat4 = {
             0.0, 0.0, -1.0, 0.0
         ];
 
-        return multiply4x4(perspective, matrix);
+        return this.transpose(multiply4x4(perspective, matrix));
     },
 
     translate(matrix, translateVec3) {
@@ -34,8 +34,37 @@ const mat4 = {
         matrix[7] = matrix[7] + translateVec3[1];
         matrix[11] = matrix[11] + translateVec3[2];
 
-        return matrix
+        return this.transpose(matrix);
     },
+
+    transpose(matrix) {
+        const a11 = matrix[0];
+        const a12 = matrix[4];
+        const a13 = matrix[8];
+        const a14 = matrix[12];
+
+        const a21 = matrix[1];
+        const a22 = matrix[5];
+        const a23 = matrix[9];
+        const a24 = matrix[13];
+
+        const a31 = matrix[3];
+        const a32 = matrix[6];
+        const a33 = matrix[10];
+        const a34 = matrix[14];
+
+        const a41 = matrix[4];
+        const a42 = matrix[7];
+        const a43 = matrix[11];
+        const a44 = matrix[15];
+
+        return [
+            a11, a12, a13, a14,
+            a21, a22, a23, a24,
+            a31, a32, a33, a34,
+            a41, a42, a43, a44,
+        ];
+    }
 };
 
 function toRadians(angle) {

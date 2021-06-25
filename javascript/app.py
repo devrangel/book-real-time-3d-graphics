@@ -34,9 +34,13 @@ app = Flask(__name__, static_url_path='/static')
 # def index():
 #     return render_template('ch02/ch02_04_rendering-modes.html')
 
+# @app.route("/")
+# def index():
+#     return render_template('ch02/ch02_05_state-machine.html')
+
 @app.route("/")
 def index():
-    return render_template('ch02/ch02_05_state-machine.html')
+    return render_template('ch02/ch02_07_ajax-cone.html')
 # -------------------------------------------------------------------
 
 
